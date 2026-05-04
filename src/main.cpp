@@ -1,26 +1,28 @@
 #include <logging.hpp>
 #include <print>
+#include <string>
 #include <tempfile.hpp>
 
 #include "zip_fs.hpp"
 
 int main(int argc, char** argv) {
-    TempDir temp;
+	TempDir temp = TempDir::tempdir_here();
 
-    logging_level = VERBOSE;
+	if (argc < 2 || (std::string)argv[1] == "-v") {
+		std::println("Please specify a archive.");
+		return 1;
+	}
 
-    if (argc < 2) {
-	std::println("Please specify a archive.");
-	return 1;
-    }
+	for (int i = 2; i < argc; i++) {
+		std::string arg = argv[i];
+		if (arg == "-v") {
+			logging_level = VERBOSE;
+		}
+	}
 
-    ZipFS zfs(argv[1]);
+	ZipFS zfs(argv[1]);
 
-    log(INFO, "Hello there, my temporary directory is {}!", temp)
+	zfs.run(temp);
 
-    std::string mp = temp;
-
-    zfs.run(mp);
-
-    return 0;
+	return 0;
 }
