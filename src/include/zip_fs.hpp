@@ -17,22 +17,9 @@
 class ZipArchive {
    public:
 	zip_t* z = NULL;
-	ZipArchive(const std::string& path) {
-		int err;
-		z = zip_open(path.c_str(), ZIP_RDONLY, &err);
+	ZipArchive(const std::string& path);
 
-		if (z == NULL) {
-			zip_error_t error;
-			zip_error_init_with_code(&error, err);
-
-			std::runtime_error except(zip_error_strerror(&error));
-			zip_error_fini(&error);
-
-			throw except;
-		}
-	}
-
-	~ZipArchive() { zip_close(z); }
+	~ZipArchive();
 };
 
 class ZipFS : public FileSystem {
@@ -82,7 +69,8 @@ class ZipFS : public FileSystem {
 			// This is probably less efficient than doing it manually, too bad.
 			std::string file_name = zip_get_name(arch.z, i, ZIP_FL_ENC_GUESS);
 
-			if (file_name.find('/')) {
+			if (file_name.find('/') == std::string::npos) {
+			    log(VERBOSE, "Adding file {}", file_name);
 				filler(buf, file_name.c_str(), NULL, 0, FUSE_FILL_DIR_PLUS);
 			}
 		}

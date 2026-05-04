@@ -2,7 +2,8 @@
 #ifndef LOGGING_H
 #define LOGGING_H
 
-#include <print>
+// Used in the log macro
+#include <print> // IWYU pragma: keep
 
 enum logging_level {
 	NONE,
@@ -11,7 +12,7 @@ enum logging_level {
 	VERBOSE,
 };
 
-enum logging_level logging_level = INFO;
+extern enum logging_level logging_level;
 
 #define log(level, ...)            \
 	if (level <= logging_level) {  \

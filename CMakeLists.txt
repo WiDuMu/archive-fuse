@@ -11,13 +11,13 @@ project(ArchiveFolders
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(CMAKE_EXPORT_COMPILE_COMMANDS)
-    # Define paths for the source and destination
-    set(SOURCE_CC "${CMAKE_BINARY_DIR}/compile_commands.json")
-    set(TARGET_CC "${CMAKE_SOURCE_DIR}/compile_commands.json")
+  # Define paths for the source and destination
+  set(SOURCE_CC "${CMAKE_BINARY_DIR}/compile_commands.json")
+  set(TARGET_CC "${CMAKE_SOURCE_DIR}/compile_commands.json")
 
-    # Create the symlink automatically during the CMake configuration step
-    # 'create_symlink' is cross-platform but works best on Unix-like systems
-    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ${SOURCE_CC} ${TARGET_CC})
+  # Create the symlink automatically during the CMake configuration step
+  # 'create_symlink' is cross-platform but works best on Unix-like systems
+  execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ${SOURCE_CC} ${TARGET_CC})
 endif()
 
 set(CMAKE_CXX_STANDARD 26)
@@ -26,7 +26,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # It's often better to list files explicitly than using globbing.
 set(SOURCES
+    src/logging.cpp
     src/main.cpp
+    src/zip_fs.cpp
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
@@ -41,10 +43,10 @@ pkg_check_modules(FUSE3 REQUIRED IMPORTED_TARGET fuse3)
 target_link_libraries(${PROJECT_NAME} PRIVATE PkgConfig::FUSE3)
 
 if(NOT libzip_FOUND)
-    pkg_check_modules(LIBZIP REQUIRED IMPORTED_TARGET libzip)
-    target_link_libraries(${PROJECT_NAME} PUBLIC PkgConfig::LIBZIP)
+  pkg_check_modules(LIBZIP REQUIRED IMPORTED_TARGET libzip)
+  target_link_libraries(${PROJECT_NAME} PUBLIC PkgConfig::LIBZIP)
 else()
-    target_link_libraries(${PROJECT_NAME} PUBLIC libzip::zip)
+  target_link_libraries(${PROJECT_NAME} PUBLIC libzip::zip)
 endif()
 
 # Include directory setup
@@ -54,17 +56,17 @@ target_include_directories(${PROJECT_NAME} PUBLIC src/include)
 find_program(CLANG_FORMAT_EXE NAMES clang-format)
 
 if(CLANG_FORMAT_EXE)
-    # Get all project files to format
-    file(GLOB_RECURSE ALL_SOURCE_FILES
+  # Get all project files to format
+  file(GLOB_RECURSE ALL_SOURCE_FILES
         src/*.cpp
         src/*.hpp
         include/*.hpp
     )
 
-    add_custom_target(format
+  add_custom_target(format
         COMMAND ${CLANG_FORMAT_EXE} -i -style=file ${ALL_SOURCE_FILES}
         COMMENT "Formatting project source files with clang-format..."
     )
 else()
-    message(WARNING "clang-format not found. The 'format' target will not be available.")
+  message(WARNING "clang-format not found. The 'format' target will not be available.")
 endif()
