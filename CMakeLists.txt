@@ -20,7 +20,7 @@ if(CMAKE_EXPORT_COMPILE_COMMANDS)
     execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ${SOURCE_CC} ${TARGET_CC})
 endif()
 
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -30,6 +30,22 @@ set(SOURCES
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
+
+# Needed by fuse on linux
+find_package(PkgConfig REQUIRED)
+
+# Libraries
+find_package(libzip QUIET)
+pkg_check_modules(FUSE3 REQUIRED IMPORTED_TARGET fuse3)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE PkgConfig::FUSE3)
+
+if(NOT libzip_FOUND)
+    pkg_check_modules(LIBZIP REQUIRED IMPORTED_TARGET libzip)
+    target_link_libraries(${PROJECT_NAME} PUBLIC PkgConfig::LIBZIP)
+else()
+    target_link_libraries(${PROJECT_NAME} PUBLIC libzip::zip)
+endif()
 
 # Include directory setup
 target_include_directories(${PROJECT_NAME} PUBLIC src/include)
