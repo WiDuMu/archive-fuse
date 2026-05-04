@@ -1,4 +1,5 @@
 #include <zip_fs.hpp>
+#include <stdexcept>
 
 ZipArchive::ZipArchive(const std::string& path) {
 		int err;

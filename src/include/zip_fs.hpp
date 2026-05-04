@@ -5,7 +5,6 @@
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
-#include <stdexcept>
 
 #include "logging.hpp"
 #pragma once
