@@ -5,22 +5,19 @@
 
 #include "zip_fs.hpp"
 
+#include "clipp.h"
+
 int main(int argc, char** argv) {
+    std::string archive_path;
+    auto cli = (
+        clipp::value("archive", archive_path),
+        option("-v", "--verbose").set()
+    )
+
 	TempDir temp = TempDir::tempdir_here();
 
-	if (argc < 2 || (std::string)argv[1] == "-v") {
-		std::println("Please specify a archive.");
-		return 1;
-	}
 
-	for (int i = 2; i < argc; i++) {
-		std::string arg = argv[i];
-		if (arg == "-v") {
-			logging_level = VERBOSE;
-		}
-	}
-
-	ZipFS zfs(argv[1]);
+	ZipFS zfs(archive_path);
 
 	zfs.run(temp);
 
