@@ -15,7 +15,7 @@
 
 class ZipArchive {
    public:
-	zip_t* z = NULL;
+	zip_t* z;
 	ZipArchive(const std::string& path);
 
 	~ZipArchive();
@@ -24,10 +24,9 @@ class ZipArchive {
 class ZipFS : public FileSystem {
    private:
 	ZipArchive arch;
-	size_t size;
 
    public:
-	ZipFS(const std::string& archive_path) : arch(archive_path), FileSystem() {}
+	ZipFS(const std::string& archive_path) : FileSystem(), arch(archive_path) {}
 
 	int getattr(const std::string& path, struct stat* stbuf) {
 		zip_stat_t sb;
@@ -40,6 +39,11 @@ class ZipFS : public FileSystem {
 			stbuf->st_mode = S_IFDIR | 0755;
 			stbuf->st_nlink = 2;
 		} else if (!zip_stat(arch.z, path.c_str() + 1, ZIP_FL_ENC_GUESS, &sb)) {
+            if (path.ends_with('/')) {
+                stbuf->st_mode = S_IFDIR | 0444;
+                stbuf->st_nlink = 3;
+                return 0;
+            }
 			stbuf->st_mode = S_IFREG | 0444;
 			stbuf->st_nlink = 1;
 			stbuf->st_size = (size_t)sb.size;
@@ -55,7 +59,7 @@ class ZipFS : public FileSystem {
 	            struct fuse_file_info* fi) {
 		log(VERBOSE, "Reading directory {}", path);
 
-		if (path != "/") {
+		if (!path.ends_with('/')) {
 			return -ENOENT;
 		}
 
@@ -67,9 +71,9 @@ class ZipFS : public FileSystem {
 		for (long i = 0; i < entries; i++) {
 			// This is probably less efficient than doing it manually, too bad.
 			std::string file_name = zip_get_name(arch.z, i, ZIP_FL_ENC_GUESS);
+			log(VERBOSE, "Adding file {}", file_name);
 
 			if (file_name.find('/') == std::string::npos) {
-			    log(VERBOSE, "Adding file {}", file_name);
 				filler(buf, file_name.c_str(), NULL, 0, FUSE_FILL_DIR_PLUS);
 			}
 		}

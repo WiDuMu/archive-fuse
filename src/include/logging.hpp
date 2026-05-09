@@ -12,7 +12,7 @@ enum logging_level {
 	VERBOSE,
 };
 
-extern enum logging_level logging_level;
+inline enum logging_level logging_level;
 
 #define log(level, ...)            \
 	if (level <= logging_level) {  \

@@ -26,12 +26,13 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # It's often better to list files explicitly than using globbing.
 set(SOURCES
-    src/logging.cpp
+    # src/logging.cpp
     src/main.cpp
     src/zip_fs.cpp
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
+target_compile_options(${PROJECT_NAME} PRIVATE -Werror -Wall -Wextra -Wno-unused-parameter)
 
 # Needed by fuse on linux
 find_package(PkgConfig REQUIRED)

@@ -69,6 +69,7 @@ class FileSystem {
 
 		// Libfuse relies on a set of arguments to configure itself
 		// However, we want to be able to use our own CLI, so these are faked statically.
+		// const_cast is used
 		std::vector<char*> fake_args = {
 		    const_cast<char*>("fakeprogramname"),
 		    const_cast<char*>(mount_point),
