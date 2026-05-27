@@ -84,9 +84,7 @@ class FileSystem {
 		return fuse_main(fake_args.size(), fake_args.data(), &ops, this);
 	}
 
-	int run(const std::string& mount_point) {
-	    return run(mount_point.c_str());
-	}
+	int run(const std::string& mount_point) { return run(mount_point.c_str()); }
 };
 
 #endif  // FS_FUSE_H

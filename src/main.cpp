@@ -1,5 +1,5 @@
 #include <logging.hpp>
-#include <print>
+#include <iostream>
 #include <string>
 #include <tempfile.hpp>
 
@@ -9,10 +9,25 @@
 
 int main(int argc, char** argv) {
     std::string archive_path;
+    bool verbose;
+    bool quiet;
+
     auto cli = (
-        clipp::value("archive", archive_path),
-        option("-v", "--verbose").set()
-    )
+        clipp::value("archive", archive_path).doc("archive to mount"),
+        clipp::option("-v", "--verbose").set(verbose).doc("verbose output"),
+        clipp::option("-q", "--quiet").set(quiet).doc("quiet output")
+    );
+
+    if (!clipp::parse(argc, argv, cli)) {
+        std::cout << clipp::make_man_page(cli);
+        return 1;
+    }
+
+    if (verbose) {
+        logging_level = VERBOSE;
+    } else if (quiet) {
+        logging_level = ERROR;
+    }
 
 	TempDir temp = TempDir::tempdir_here();
 

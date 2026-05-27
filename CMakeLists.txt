@@ -26,7 +26,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # It's often better to list files explicitly than using globbing.
 set(SOURCES
-    # src/logging.cpp
     src/main.cpp
     src/zip_fs.cpp
 )
