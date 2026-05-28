@@ -2,6 +2,7 @@
 #define ZIPFS_H
 
 #include <zipconf.h>
+#include <set>
 #pragma once
 
 #include <zip.h>
@@ -14,6 +15,7 @@ class ZipFS : public FileSystem {
    private:
 	zip_t* z;
 	zip_int64_t nentries;
+	std::set<std::string> dirs;
 
    public:
 	ZipFS(const std::string& archive_path);

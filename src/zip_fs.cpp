@@ -1,8 +1,9 @@
 #include <zip.h>
-#include <zipconf.h>
 
+#include <cerrno>
 #include <cstdio>
 #include <stdexcept>
+#include <string>
 #include <zip_fs.hpp>
 
 #include "logging.hpp"
@@ -26,6 +27,17 @@ ZipFS::ZipFS(const std::string& archive_path) : FileSystem(), z(nullptr) {
 	if (nentries == -1) {
 		throw std::runtime_error("Unable to get the number of entries for archive");
 	}
+
+	for (zip_int64_t i = 0; i < nentries; i++) {
+		std::string file_name = zip_get_name(z, i, ZIP_FL_ENC_GUESS);
+		size_t separator_loc = file_name.find('/');
+
+		if (separator_loc != std::string::npos) {
+			std::string dir_name = file_name.substr(0, separator_loc);
+			log(VERBOSE, "Adding dir {} to dirs", dir_name);
+			dirs.insert(dir_name);
+		}
+	}
 }
 
 ZipFS::~ZipFS() { zip_close(z); }
@@ -38,12 +50,10 @@ int ZipFS::getattr(const std::string& path, struct stat* stbuf) {
 	if (path == "/") {
 		stbuf->st_mode = S_IFDIR | 0755;
 		stbuf->st_nlink = 2;
+	} else if (path.ends_with('/') && path.length() > 1 && dirs.contains(path.c_str() + 1)) {
+		stbuf->st_mode = S_IFDIR | 0444;
+		stbuf->st_nlink = 3;
 	} else if (!zip_stat(z, path.c_str() + 1, ZIP_FL_ENC_GUESS, &sb)) {
-		if (path.ends_with('/')) {
-			stbuf->st_mode = S_IFDIR | 0444;
-			stbuf->st_nlink = 3;
-			return 0;
-		}
 		stbuf->st_mode = S_IFREG | 0444;
 		stbuf->st_nlink = 1;
 		stbuf->st_size = (size_t)sb.size;
@@ -57,22 +67,43 @@ int ZipFS::getattr(const std::string& path, struct stat* stbuf) {
 
 int ZipFS::readdir(const std::string& path, void* buf, fuse_fill_dir_t filler, off_t offset,
                    struct fuse_file_info* fi) {
+	std::string dir;
 	log(VERBOSE, "Reading directory {}", path);
 
-	if (!path.ends_with('/')) {
-		return -ENOENT;
+	if (path == "/") {
+		dir = "";
+	} else {
+		dir = path.substr(1);  // The paths all start with '/'
+		if (!dir.ends_with('/')) {
+			dir += '/';
+		}
+
+		if (!dirs.contains(path)) {
+			return -ENOENT;
+		}
 	}
 
 	filler(buf, ".", NULL, 0, FUSE_FILL_DIR_PLUS);
 	filler(buf, "..", NULL, 0, FUSE_FILL_DIR_PLUS);
+	for (const std::string& possible_subdir : dirs) {
+		if (possible_subdir.starts_with(dir)) {
+			std::string relative_path = possible_subdir.substr(dir.length());
+			if (relative_path.find('/') == relative_path.find_last_of('/')) {
+				log(VERBOSE, "Adding subdirectory {} to {}", relative_path, path);
+			}
+		}
+	}
 
 	for (long i = 0; i < nentries; i++) {
 		// This is probably less efficient than doing it manually, too bad.
 		std::string file_name = zip_get_name(z, i, ZIP_FL_ENC_GUESS);
-		log(VERBOSE, "Adding file {}", file_name);
 
-		if (file_name.find('/') == std::string::npos) {
-			filler(buf, file_name.c_str(), NULL, 0, FUSE_FILL_DIR_PLUS);
+		if (file_name.starts_with(dir)) {
+			std::string relative_path = file_name.substr(dir.length());
+			if (!relative_path.contains('/')) {
+				log(VERBOSE, "Adding file {} to {}", file_name, dir);
+				filler(buf, relative_path.c_str(), NULL, 0, FUSE_FILL_DIR_PLUS);
+			}
 		}
 	}
 
