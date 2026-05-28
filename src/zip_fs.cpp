@@ -32,13 +32,14 @@ ZipFS::ZipFS(const std::string& archive_path) : FileSystem(), z(nullptr) {
 	for (zip_int64_t i = 0; i < nentries; i++) {
 		const char* fname = zip_get_name(z, i, ZIP_FL_ENC_GUESS);
 		if (fname) {
-			std::string file_name = fname;
-			size_t separator_loc = file_name.find('/');
+			std::string potential_dir_name = fname;
+			size_t separator_loc = potential_dir_name.find('/');
 
-			if (separator_loc != std::string::npos) {
-				std::string dir_name = file_name.substr(0, separator_loc);
-				log(VERBOSE, "Adding dir {} to dirs", dir_name);
-				dirs.insert(dir_name);
+			while (separator_loc != std::string::npos) {
+				potential_dir_name = potential_dir_name.substr(0, separator_loc);
+				log(VERBOSE, "Adding dir {} to dirs", potential_dir_name);
+				dirs.insert(potential_dir_name);
+				separator_loc = potential_dir_name.find('/');
 			}
 		}
 	}
@@ -54,7 +55,7 @@ int ZipFS::getattr(const std::string& path, struct stat* stbuf) {
 	if (path == "/") {
 		stbuf->st_mode = S_IFDIR | 0755;
 		stbuf->st_nlink = 2;
-	} else if (path.ends_with('/') && path.length() > 1 && dirs.contains(path.c_str() + 1)) {
+	} else if (dirs.contains(path.c_str() + 1)) {
 		stbuf->st_mode = S_IFDIR | 0444;
 		stbuf->st_nlink = 3;
 	} else if (!zip_stat(z, path.c_str() + 1, ZIP_FL_ENC_GUESS, &sb)) {
@@ -92,20 +93,36 @@ const int default_perms = 0444;
 
 int ZipFS::readdir(const std::string& path, void* buf, fuse_fill_dir_t filler, off_t offset,
                    struct fuse_file_info* fi) {
-    std::set<std::string> dirs_added;
-	std::string dir;
+	std::set<std::string> dirs_added;
+	std::string dir = path.substr(1);
 	log(VERBOSE, "Reading directory {}", path);
+	zip_directory_exists(z, dir);
 
 	if (path == "/") {
-	} else if (zip_directory_exists(z, path)) {
-		dir = path.substr(1);
-		if (!dir.ends_with('/')) dir += '/';
+		dir = "";
+	} else if (dirs.contains(path)) {
+	    if (!dir.ends_with('/')) dir += '/';
 	} else {
+	    log(ERROR, "Failed to find directory {}", dir);
 		return -ENOENT;
 	}
 
 	filler(buf, ".", NULL, 0, FUSE_FILL_DIR_PLUS);
 	filler(buf, "..", NULL, 0, FUSE_FILL_DIR_PLUS);
+
+	for (const std::string& potentry : dirs) {
+		if (potentry.starts_with(dir)) {
+			std::string relative_path = potentry.substr(dir.length());
+			if (relative_path.find('/') == relative_path.find_last_of('/')) {
+				struct stat st{};
+				log(VERBOSE, "Adding subdirectory {} from index", relative_path);
+				st.st_nlink = 2;
+				st.st_mode = S_IFDIR | default_perms;
+				dirs_added.insert(relative_path);
+				filler(buf, relative_path.c_str(), &st, 0, FUSE_FILL_DIR_PLUS);
+			}
+		}
+	}
 
 	for (long i = 0; i < nentries; i++) {
 		// This is probably less efficient than doing it manually, too bad.
@@ -114,18 +131,17 @@ int ZipFS::readdir(const std::string& path, void* buf, fuse_fill_dir_t filler, o
 
 		if (file_name.starts_with(dir)) {
 			std::string relative_path = file_name.substr(dir.length());
-			log(VERBOSE, "File {} has relative path {}", file_name, relative_path);
 
 			if (relative_path.ends_with('/')) {
-			log(VERBOSE, "Entry {} is a directory!", relative_path);
-				if (relative_path.find('/') == relative_path.find_last_not_of('/')) {
-				struct stat st{};
-					log(VERBOSE, "Adding subdirectory {}", relative_path);
-					st.st_nlink = 2;
-					st.st_mode = S_IFDIR | default_perms;
-					dirs_added.insert(relative_path);
-					filler(buf, relative_path.c_str(), &st, 0, FUSE_FILL_DIR_PLUS);
-				}
+				log(VERBOSE, "Entry {} is a directory!", relative_path);
+				// if (relative_path.find('/') == relative_path.find_last_not_of('/')) {
+				// 	struct stat st{};
+				// 	log(VERBOSE, "Adding subdirectory {}", relative_path);
+				// 	st.st_nlink = 2;
+				// 	st.st_mode = S_IFDIR | default_perms;
+				// 	dirs_added.insert(relative_path);
+				// 	filler(buf, relative_path.c_str(), &st, 0, FUSE_FILL_DIR_PLUS);
+				// }
 			} else if (!relative_path.contains('/')) {
 				log(VERBOSE, "Adding file {} to {}", file_name, dir);
 				filler(buf, relative_path.c_str(), NULL, 0, FUSE_FILL_DIR_PLUS);
@@ -150,20 +166,16 @@ const zip_int64_t PAGE_SIZE = 4096;
 
 static inline int zseek(zip_file_t* file, off_t offset) {
 	char dontcare[PAGE_SIZE];  // For some compressed files, we have to read to a point.
-	zip_int64_t curr = zip_ftell(file);
-
-	if (curr == -1) {
-		throw std::runtime_error("Failed to seek in file: could not get file offset");
-	}
-
-	if (curr == offset) {
-		return 0;
-	}
-
 	bool seekable = zip_file_is_seekable(file);
 
 	if (seekable) {
 		return zip_fseek(file, offset, SEEK_SET);
+	}
+
+	zip_int64_t curr = zip_ftell(file);
+
+	if (curr == offset) {
+		return 0;
 	}
 
 	while (curr != -1 && (curr + PAGE_SIZE) < offset) {
@@ -197,15 +209,16 @@ int ZipFS::read(const std::string& path, char* buf, size_t size, off_t offset,
 
 	file = zip_fopen(z, path.c_str() + 1, ZIP_FL_ENC_GUESS);
 
-	if (file) {
-		if (zseek(file, offset)) {
-			return EOF;
-		}
-
-		zip_int64_t nread = zip_fread(file, buf, size);
-
-		zip_fclose(file);
-		return nread;
+	if (!file) {
+		return -ENOENT;
 	}
-	return -ENOENT;
+
+	if (zseek(file, offset)) {
+		return EOF;
+	}
+
+	zip_int64_t nread = zip_fread(file, buf, size);
+
+	zip_fclose(file);
+	return nread;
 }
