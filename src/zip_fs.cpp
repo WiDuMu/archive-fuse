@@ -70,87 +70,84 @@ int ZipFS::getattr(const std::string& path, struct stat* stbuf) {
 	return 0;
 }
 
-static bool zip_directory_exists(zip_t* archive, const std::string dir_path) {
-	std::string dir = dir_path;
-	if (!archive || dir_path.empty()) return false;
+// static bool zip_directory_exists(zip_t* archive, const std::string dir_path) {
+// 	std::string dir = dir_path;
+// 	if (!archive || dir_path.empty()) return false;
 
-	if (dir_path.back() != '/') dir += '/';
+// 	if (dir_path.back() != '/') dir += '/';
 
-	if (zip_name_locate(archive, dir.c_str(), 0) != -1) return true;
+// 	if (zip_name_locate(archive, dir.c_str(), 0) != -1) return true;
 
-	zip_int64_t entries = zip_get_num_entries(archive, 0);
+// 	zip_int64_t entries = zip_get_num_entries(archive, 0);
 
-	for (zip_int64_t i = 0; i < entries; i++) {
-		const char* file_name = zip_get_name(archive, i, 0);
-		if (file_name == nullptr) continue;
+// 	for (zip_int64_t i = 0; i < entries; i++) {
+// 		const char* file_name = zip_get_name(archive, i, 0);
+// 		if (file_name == nullptr) continue;
 
-		if (strncmp(file_name, dir_path.c_str(), dir_path.length()) == 0) return true;
-	}
-	return false;
-}
+// 		if (strncmp(file_name, dir_path.c_str(), dir_path.length()) == 0) return true;
+// 	}
+// 	return false;
+// }
 
 const int default_perms = 0444;
 
 int ZipFS::readdir(const std::string& path, void* buf, fuse_fill_dir_t filler, off_t offset,
-                   struct fuse_file_info* fi) {
-	std::set<std::string> dirs_added;
-	std::string dir = path.substr(1);
-	log(VERBOSE, "Reading directory {}", path);
-	zip_directory_exists(z, dir);
+	            struct fuse_file_info* fi) {
+		bool any_added = false;
+		std::set<std::string_view> dirs_added;
+		std::string dir = path.substr(1);
+		if (path != "/" && !path.ends_with('/')) {
+			dir += '/';
+		}
 
-	if (path == "/") {
-		dir = "";
-	} else if (dirs.contains(path)) {
-	    if (!dir.ends_with('/')) dir += '/';
-	} else {
-	    log(ERROR, "Failed to find directory {}", dir);
+		log(VERBOSE, "Reading dir {}", dir);
+
+		for (long i = 0; i < nentries; i++) {
+			// This is probably less efficient than doing it manually, too bad.
+			std::string_view file_name = zip_get_name(z, i, ZIP_FL_ENC_GUESS);
+
+			if (file_name.starts_with(dir)) {
+				std::string_view postfix = file_name.substr(dir.length());
+				if (postfix.contains('/')) {
+					std::string_view new_dir_name = postfix.substr(0, postfix.find('/'));
+					log(VERBOSE, "File {} at postfix {} belongs in a subdirectory {}", file_name,
+					    postfix, new_dir_name);
+
+					if (!dirs_added.contains(new_dir_name)) {
+						log(VERBOSE, "Adding subdirectory {}", new_dir_name);
+
+						struct stat st{};
+						st.st_nlink = 2;
+						st.st_mode = S_IFDIR | default_perms;
+
+						dirs_added.insert(new_dir_name);
+						std::string f(new_dir_name);
+						filler(buf, f.c_str(), &st, 0, FUSE_FILL_DIR_PLUS);
+						any_added = true;
+					}
+				} else {
+					log(VERBOSE, "Adding file {} at postfix {} to directory {}", file_name, postfix,
+					    dir);
+					if (!postfix.empty()) {
+					    std::string f(postfix);
+					    filler(buf, f.c_str(), NULL, 0, FUSE_FILL_DIR_PLUS);
+					}
+					any_added = true;
+				}
+			}
+		}
+
+		if (any_added || path == "/") {
+		    struct stat st{};
+			st.st_nlink = 3;
+			st.st_nlink = S_IFDIR | default_perms;
+			filler(buf, ".", &st, 0, FUSE_FILL_DIR_PLUS);
+			filler(buf, "..", &st, 0, FUSE_FILL_DIR_PLUS);
+			return 0;
+		}
+
 		return -ENOENT;
 	}
-
-	filler(buf, ".", NULL, 0, FUSE_FILL_DIR_PLUS);
-	filler(buf, "..", NULL, 0, FUSE_FILL_DIR_PLUS);
-
-	for (const std::string& potentry : dirs) {
-		if (potentry.starts_with(dir)) {
-			std::string relative_path = potentry.substr(dir.length());
-			if (relative_path.find('/') == relative_path.find_last_of('/')) {
-				struct stat st{};
-				log(VERBOSE, "Adding subdirectory {} from index", relative_path);
-				st.st_nlink = 2;
-				st.st_mode = S_IFDIR | default_perms;
-				dirs_added.insert(relative_path);
-				filler(buf, relative_path.c_str(), &st, 0, FUSE_FILL_DIR_PLUS);
-			}
-		}
-	}
-
-	for (long i = 0; i < nentries; i++) {
-		// This is probably less efficient than doing it manually, too bad.
-		std::string file_name = zip_get_name(z, i, ZIP_FL_ENC_GUESS);
-		log(VERBOSE, "Attempting to add file {} to {}", file_name, dir);
-
-		if (file_name.starts_with(dir)) {
-			std::string relative_path = file_name.substr(dir.length());
-
-			if (relative_path.ends_with('/')) {
-				log(VERBOSE, "Entry {} is a directory!", relative_path);
-				// if (relative_path.find('/') == relative_path.find_last_not_of('/')) {
-				// 	struct stat st{};
-				// 	log(VERBOSE, "Adding subdirectory {}", relative_path);
-				// 	st.st_nlink = 2;
-				// 	st.st_mode = S_IFDIR | default_perms;
-				// 	dirs_added.insert(relative_path);
-				// 	filler(buf, relative_path.c_str(), &st, 0, FUSE_FILL_DIR_PLUS);
-				// }
-			} else if (!relative_path.contains('/')) {
-				log(VERBOSE, "Adding file {} to {}", file_name, dir);
-				filler(buf, relative_path.c_str(), NULL, 0, FUSE_FILL_DIR_PLUS);
-			}
-		}
-	}
-
-	return 0;
-}
 
 int ZipFS::open(const std::string& path, struct fuse_file_info* fi) {
 	log(VERBOSE, "Opening entry {}", path);
