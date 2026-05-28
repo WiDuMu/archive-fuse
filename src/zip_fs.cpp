@@ -110,11 +110,8 @@ int ZipFS::readdir(const std::string& path, void* buf, fuse_fill_dir_t filler, o
 				std::string_view postfix = file_name.substr(dir.length());
 				if (postfix.contains('/')) {
 					std::string_view new_dir_name = postfix.substr(0, postfix.find('/'));
-					log(VERBOSE, "File {} at postfix {} belongs in a subdirectory {}", file_name,
-					    postfix, new_dir_name);
 
 					if (!dirs_added.contains(new_dir_name)) {
-						log(VERBOSE, "Adding subdirectory {}", new_dir_name);
 
 						struct stat st{};
 						st.st_nlink = 2;
@@ -126,8 +123,6 @@ int ZipFS::readdir(const std::string& path, void* buf, fuse_fill_dir_t filler, o
 						any_added = true;
 					}
 				} else {
-					log(VERBOSE, "Adding file {} at postfix {} to directory {}", file_name, postfix,
-					    dir);
 					if (!postfix.empty()) {
 					    std::string f(postfix);
 					    filler(buf, f.c_str(), NULL, 0, FUSE_FILL_DIR_PLUS);
