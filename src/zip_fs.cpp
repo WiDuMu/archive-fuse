@@ -1,5 +1,7 @@
 #include <zip.h>
+#include <zipconf.h>
 
+#include <cstdio>
 #include <stdexcept>
 #include <zip_fs.hpp>
 
@@ -22,7 +24,7 @@ ZipFS::ZipFS(const std::string& archive_path) : FileSystem(), z(nullptr) {
 	nentries = zip_get_num_entries(z, 0);
 
 	if (nentries == -1) {
-	    throw std::runtime_error("Unable to get the number of entries for archive");
+		throw std::runtime_error("Unable to get the number of entries for archive");
 	}
 }
 
@@ -87,44 +89,66 @@ int ZipFS::release(const std::string& path, struct fuse_file_info* fi) {
 	return 0;
 }
 
-int ZipFS::read(const std::string& path, char* buf, size_t size, off_t offset,
-	         struct fuse_file_info* fi) {
-		zip_file_t* file = NULL;
-		log(VERBOSE, "Reading {} bytes from offset {} from {}", size, offset, path);
+const zip_int64_t PAGE_SIZE = 4096;
 
-		file = zip_fopen(z, path.c_str() + 1, ZIP_FL_ENC_GUESS);
+static inline int zseek(zip_file_t* file, off_t offset) {
+	char dontcare[PAGE_SIZE];  // For some compressed files, we have to read to a point.
+	zip_int64_t curr = zip_ftell(file);
 
-		if (file) {
-			if (offset != 0 && zip_file_is_seekable(file) && zip_fseek(file, offset, SEEK_SET)) {
-				log(ERROR, "Failed to seek to offset {} in file {}", offset, path);
-				return EOF;
-			} else if (offset != 0 && !zip_file_is_seekable(file)) {
-				log(VERBOSE, "Attempting a read seek");
-				char dontcare[4096];
-				zip_int64_t pos = zip_ftell(file);
-
-				while (pos != -1 && (pos + 4096) < offset) {
-					if (zip_fread(file, dontcare, 4096) != 4096) {
-						log(ERROR, "Failed read seek to offset {} in file {}", offset, path);
-						return EOF;
-					}
-
-					pos = zip_ftell(file);
-					log(VERBOSE, "Read seek at pos {}", pos);
-				}
-
-				zip_int64_t final_read = offset - pos;
-
-				if (zip_fread(file, dontcare, final_read) != final_read) {
-					log(ERROR, "Failed final read seek to offset {} in file {}", offset, path);
-					return EOF;
-				}
-			}
-
-			zip_int64_t nread = zip_fread(file, buf, size);
-
-			zip_fclose(file);
-			return nread;
-		}
-		return -ENOENT;
+	if (curr == -1) {
+		throw std::runtime_error("Failed to seek in file: could not get file offset");
 	}
+
+	if (curr == offset) {
+		return 0;
+	}
+
+	bool seekable = zip_file_is_seekable(file);
+
+	if (seekable) {
+		return zip_fseek(file, offset, SEEK_SET);
+	}
+
+	while (curr != -1 && (curr + PAGE_SIZE) < offset) {
+		if (zip_fread(file, dontcare, PAGE_SIZE) != PAGE_SIZE) {
+			log(ERROR, "Failed read seek from offset {} to offset {}", curr, offset);
+			return EOF;
+		}
+
+		curr = zip_ftell(file);
+	}
+
+	if (curr == -1) {
+		log(ERROR, "Failed read seek, ftell failed");
+		return EOF;
+	}
+
+	zip_int64_t read_size = offset - curr;
+
+	if (zip_fread(file, dontcare, read_size) != read_size) {
+		log(ERROR, "Failed final read seek from offset {} to {}", curr, offset);
+		return EOF;
+	}
+
+	return 0;
+}
+
+int ZipFS::read(const std::string& path, char* buf, size_t size, off_t offset,
+                struct fuse_file_info* fi) {
+	zip_file_t* file = nullptr;
+	log(VERBOSE, "Reading {} bytes from offset {} from {}", size, offset, path);
+
+	file = zip_fopen(z, path.c_str() + 1, ZIP_FL_ENC_GUESS);
+
+	if (file) {
+		if (zseek(file, offset)) {
+			return EOF;
+		}
+
+		zip_int64_t nread = zip_fread(file, buf, size);
+
+		zip_fclose(file);
+		return nread;
+	}
+	return -ENOENT;
+}
