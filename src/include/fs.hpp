@@ -26,6 +26,7 @@ class FileSystem {
 		return -ENOENT;
 	}
 	virtual int open(const std::string& path, struct fuse_file_info* fi) { return 0; }
+	virtual int release(const std::string& path, struct fuse_file_info* fi) { return 0; }
 	virtual int read(const std::string& path, char* buf, size_t size, off_t offset,
 	                 struct fuse_file_info* fi) {
 		return 0;
@@ -44,6 +45,10 @@ class FileSystem {
 
 	static int wrap_open(const char* path, struct fuse_file_info* fi) {
 		return get_instance()->open(path, fi);
+	}
+
+	static int wrap_release(const char* path, struct fuse_file_info* fi) {
+		return get_instance()->release(path, fi);
 	}
 
 	static int wrap_read(const char* path, char* buf, size_t size, off_t offset,
@@ -65,6 +70,7 @@ class FileSystem {
 		ops.getattr = wrap_getattr;
 		ops.readdir = wrap_readdir;
 		ops.open = wrap_open;
+		ops.release = wrap_release;
 		ops.read = wrap_read;
 
 		// Libfuse relies on a set of arguments to configure itself
