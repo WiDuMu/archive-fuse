@@ -1,4 +1,3 @@
-#include <sys/stat.h>
 #include <zip.h>
 
 #include <cerrno>
@@ -92,65 +91,72 @@ int ZipFS::getattr(const std::string& path, struct stat* stbuf) {
 const int default_perms = 0444;
 
 int ZipFS::readdir(const std::string& path, void* buf, fuse_fill_dir_t filler, off_t offset,
-	            struct fuse_file_info* fi) {
-		bool any_added = false;
-		std::set<std::string_view> dirs_added;
-		std::string dir = path.substr(1);
-		if (path != "/" && !path.ends_with('/')) {
-			dir += '/';
-		}
+                   struct fuse_file_info* fi) {
+	bool any_added = false;
+	std::set<std::string_view> dirs_added;
+	std::string dir = path.substr(1);
+	if (path != "/" && !path.ends_with('/')) {
+		dir += '/';
+	}
 
-		log(VERBOSE, "Reading dir {}", dir);
+	log(VERBOSE, "Reading dir {}", dir);
 
-		for (long i = 0; i < nentries; i++) {
-			// This is probably less efficient than doing it manually, too bad.
-			std::string_view file_name = zip_get_name(z, i, ZIP_FL_ENC_GUESS);
+	for (long i = 0; i < nentries; i++) {
+		// This is probably less efficient than doing it manually, too bad.
+		std::string_view file_name = zip_get_name(z, i, ZIP_FL_ENC_GUESS);
 
-			if (file_name.starts_with(dir)) {
-				std::string_view postfix = file_name.substr(dir.length());
-				if (postfix.contains('/')) {
-					std::string_view new_dir_name = postfix.substr(0, postfix.find('/'));
+		if (file_name.starts_with(dir)) {
+			std::string_view postfix = file_name.substr(dir.length());
+			if (postfix.contains('/')) {
+				std::string_view new_dir_name = postfix.substr(0, postfix.find('/'));
 
-					if (!dirs_added.contains(new_dir_name)) {
+				if (!dirs_added.contains(new_dir_name)) {
+					struct stat st{};
+					st.st_nlink = 2;
+					st.st_mode = S_IFDIR | default_perms;
 
-						struct stat st{};
-						st.st_nlink = 2;
-						st.st_mode = S_IFDIR | default_perms;
-
-						dirs_added.insert(new_dir_name);
-						std::string f(new_dir_name);
-						filler(buf, f.c_str(), &st, 0, FUSE_FILL_DIR_PLUS);
-						any_added = true;
-					}
-				} else {
-					if (!postfix.empty()) {
-					    std::string f(postfix);
-					    filler(buf, f.c_str(), NULL, 0, FUSE_FILL_DIR_PLUS);
-					}
+					dirs_added.insert(new_dir_name);
+					std::string f(new_dir_name);
+					filler(buf, f.c_str(), &st, 0, FUSE_FILL_DIR_PLUS);
 					any_added = true;
 				}
+			} else {
+				if (!postfix.empty()) {
+					std::string f(postfix);
+					filler(buf, f.c_str(), NULL, 0, FUSE_FILL_DIR_PLUS);
+				}
+				any_added = true;
 			}
 		}
-
-		if (any_added || path == "/") {
-		    struct stat st{};
-			st.st_nlink = 3;
-			st.st_nlink = S_IFDIR | default_perms;
-			filler(buf, ".", &st, 0, FUSE_FILL_DIR_PLUS);
-			filler(buf, "..", &st, 0, FUSE_FILL_DIR_PLUS);
-			return 0;
-		}
-
-		return -ENOENT;
 	}
+
+	if (any_added || path == "/") {
+		struct stat st{};
+		st.st_nlink = 3;
+		st.st_nlink = S_IFDIR | default_perms;
+		filler(buf, ".", &st, 0, FUSE_FILL_DIR_PLUS);
+		filler(buf, "..", &st, 0, FUSE_FILL_DIR_PLUS);
+		return 0;
+	}
+
+	return -ENOENT;
+}
 
 int ZipFS::open(const std::string& path, struct fuse_file_info* fi) {
 	log(VERBOSE, "Opening entry {}", path);
-	return 0;
+	zip_file_t* file = zip_fopen(z, path.c_str() + 1, ZIP_FL_ENC_GUESS);
+	if (file) {
+		fi->fh = reinterpret_cast<size_t>(file);
+		return 0;
+	}
+	return ENOENT;
 }
 
 int ZipFS::release(const std::string& path, struct fuse_file_info* fi) {
 	log(VERBOSE, "Closing entry {}", path);
+	if (fi->fh) {
+		zip_fclose(reinterpret_cast<zip_file_t*>(fi->fh));
+	}
 	return 0;
 }
 
@@ -197,9 +203,15 @@ static inline int zseek(zip_file_t* file, off_t offset) {
 int ZipFS::read(const std::string& path, char* buf, size_t size, off_t offset,
                 struct fuse_file_info* fi) {
 	zip_file_t* file = nullptr;
+	bool fopened = false;
 	log(VERBOSE, "Reading {} bytes from offset {} from {}", size, offset, path);
 
-	file = zip_fopen(z, path.c_str() + 1, ZIP_FL_ENC_GUESS);
+	if (fi->fh) {
+		file = reinterpret_cast<zip_file_t*>(fi->fh);
+	} else {
+		file = zip_fopen(z, path.c_str() + 1, ZIP_FL_ENC_GUESS);
+		fopened = true;
+	}
 
 	if (!file) {
 		return -ENOENT;
@@ -210,7 +222,8 @@ int ZipFS::read(const std::string& path, char* buf, size_t size, off_t offset,
 	}
 
 	zip_int64_t nread = zip_fread(file, buf, size);
-
-	zip_fclose(file);
+	if (fopened) {
+		zip_fclose(file);
+	}
 	return nread;
 }
