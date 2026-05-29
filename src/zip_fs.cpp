@@ -62,6 +62,9 @@ int ZipFS::getattr(const std::string& path, struct stat* stbuf) {
 		stbuf->st_nlink = 1;
 		stbuf->st_size = (size_t)sb.size;
 		stbuf->st_uid = 0000;
+		if (sb.valid & ZIP_STAT_MTIME) {
+			stbuf->st_mtim.tv_sec = sb.mtime;
+		}
 	} else {
 		return -ENOENT;
 	}
@@ -145,8 +148,9 @@ int ZipFS::readdir(const std::string& path, void* buf, fuse_fill_dir_t filler, o
 int ZipFS::open(const std::string& path, struct fuse_file_info* fi) {
 	log(VERBOSE, "Opening entry {}", path);
 	zip_file_t* file = zip_fopen(z, path.c_str() + 1, ZIP_FL_ENC_GUESS);
+	size_t seekable = zip_file_is_seekable(file);
 	if (file) {
-		fi->fh = reinterpret_cast<size_t>(file);
+		fi->fh = reinterpret_cast<size_t>(file) | seekable;
 		return 0;
 	}
 	return ENOENT;
@@ -155,7 +159,7 @@ int ZipFS::open(const std::string& path, struct fuse_file_info* fi) {
 int ZipFS::release(const std::string& path, struct fuse_file_info* fi) {
 	log(VERBOSE, "Closing entry {}", path);
 	if (fi->fh) {
-		zip_fclose(reinterpret_cast<zip_file_t*>(fi->fh));
+		zip_fclose(reinterpret_cast<zip_file_t*>(fi->fh & (~1)));
 	}
 	return 0;
 }
@@ -207,7 +211,9 @@ int ZipFS::read(const std::string& path, char* buf, size_t size, off_t offset,
 	log(VERBOSE, "Reading {} bytes from offset {} from {}", size, offset, path);
 
 	if (fi->fh) {
-		file = reinterpret_cast<zip_file_t*>(fi->fh);
+		file = reinterpret_cast<zip_file_t*>(fi->fh & (~1));
+		bool seekable = fi->fh & 1;
+		log(VERBOSE, "Open file! addr: {}, seekable: {}", fi->fh, seekable);
 	} else {
 		file = zip_fopen(z, path.c_str() + 1, ZIP_FL_ENC_GUESS);
 		fopened = true;

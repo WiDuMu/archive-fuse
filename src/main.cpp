@@ -1,28 +1,43 @@
+#include <iostream>
 #include <logging.hpp>
-#include <print>
+#include <memory>
 #include <string>
 #include <tempfile.hpp>
 
+#include "clipp.h"
 #include "zip_fs.hpp"
 
 int main(int argc, char** argv) {
-	TempDir temp = TempDir::tempdir_here();
+	std::unique_ptr<TempDir> temp(nullptr);
+	std::string archive;
+	std::string mount_point;
+	bool verbose = false;
 
-	if (argc < 2 || (std::string)argv[1] == "-v") {
-		std::println("Please specify a archive.");
+	auto cli = (clipp::value("archive", archive).doc("Archive to open as a filesystem"),
+	            clipp::option("-v", "--verbose").set(verbose).doc("Verbose logging"),
+	            clipp::opt_value("mount_point")
+	                .set(mount_point)
+	                .doc("Optional mount point, otherwise a tempdir is used."));
+
+	if (!parse(argc, argv, cli)) {
+		std::cout << clipp::make_man_page(cli, argv[0]);
 		return 1;
 	}
 
-	for (int i = 2; i < argc; i++) {
-		std::string arg = argv[i];
-		if (arg == "-v") {
-			logging_level = VERBOSE;
-		}
+	if (verbose) {
+		logging_level = VERBOSE;
 	}
 
-	ZipFS zfs(argv[1]);
+	if (mount_point.empty()) {
+		temp = std::make_unique<TempDir>(true);
+		mount_point = temp.get()->get_loc();
+	}
 
-	zfs.run(temp);
+	log(INFO, "Mounting on {}", mount_point);
+
+	ZipFS zfs(archive);
+
+	zfs.run(mount_point);
 
 	return 0;
 }

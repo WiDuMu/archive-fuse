@@ -10,10 +10,18 @@
 /// A temporary directory that is cleaned up when it goes out of scope.
 class TempDir {
    private:
+	bool cleanup = true;
 	std::string loc;
 
    public:
 	TempDir() : loc(std::filesystem::temp_directory_path() / ".tmp-XXXXXX") {
+		if (mkdtemp(loc.data()) == nullptr) {
+			throw std::system_error(errno, std::generic_category(),
+			                        "Failed to open temporary directory");
+		}
+	}
+
+	TempDir(bool local) : loc(std::filesystem::current_path() / ".tmp-XXXXXX") {
 		if (mkdtemp(loc.data()) == nullptr) {
 			throw std::system_error(errno, std::generic_category(),
 			                        "Failed to open temporary directory");
@@ -34,13 +42,19 @@ class TempDir {
 		}
 	}
 
+	// Because TempDir deletes it's contents, it currently doesn't make sense to allow it to be
+	// cloned.
+	TempDir(TempDir& other) = delete;
+
+	TempDir(TempDir&& other) = delete;
+
 	static TempDir tempdir_here(std::string& templ) {
-		std::string current_dir = std::filesystem::current_path().string();
+		std::string current_dir = std::filesystem::current_path();
 		return TempDir(current_dir, templ);
 	}
 
 	static TempDir tempdir_here() {
-		std::string current_dir = std::filesystem::current_path().string();
+		std::string current_dir = std::filesystem::current_path();
 		return TempDir(current_dir);
 	}
 
@@ -48,7 +62,12 @@ class TempDir {
 
 	operator const std::string&() const { return loc; }
 
-	bool close() { return std::filesystem::remove_all(loc) > 0; }
+	bool close() {
+		if (cleanup) {
+			return std::filesystem::remove_all(loc) > 0;
+		}
+		return 0;
+	}
 
 	~TempDir() { close(); }
 };
