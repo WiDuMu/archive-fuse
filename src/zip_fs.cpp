@@ -100,7 +100,9 @@ int ZipFS::readdir(const std::string& path, void* buf, fuse_fill_dir_t filler, o
 	bool any_added = false;
 	std::set<std::string_view> dirs_added;
 	std::string dir = path.substr(1);
-	if (!path.ends_with('/')) {
+	if (path == "/") {
+        any_added = true;
+	} else if (!path.ends_with('/')) {
 		dir += '/';
 	}
 
@@ -135,7 +137,7 @@ int ZipFS::readdir(const std::string& path, void* buf, fuse_fill_dir_t filler, o
 		}
 	}
 
-	if (any_added || path == "/") {
+	if (any_added) {
 		struct stat st{};
 		st.st_nlink = 3;
 		st.st_nlink = S_IFDIR | default_perms;
@@ -150,7 +152,11 @@ int ZipFS::readdir(const std::string& path, void* buf, fuse_fill_dir_t filler, o
 int ZipFS::open(const std::string& path, struct fuse_file_info* fi) {
 	log(VERBOSE, "Opening entry {}", path);
 	zip_file_t* file = zip_fopen(z, path.c_str() + 1, ZIP_FL_ENC_GUESS);
-	size_t seekable = zip_file_is_seekable(file);
+	ssize_t seekable = zip_file_is_seekable(file);
+	if (seekable == -1) {
+        zip_fclose(file);
+	    return EIO; // Seekable returned error
+	}
 	if (file) {
 		fi->fh = reinterpret_cast<size_t>(file) | seekable;
 		return 0;
@@ -181,6 +187,8 @@ static inline int zseek(zip_file_t* file, off_t offset) {
 	if (curr == offset) {
 		return 0;
 	}
+
+	log(VERBOSE, "Read seeking to offset {}", offset)
 
 	while (curr != -1 && (curr + PAGE_SIZE) < offset) {
 		if (zip_fread(file, dontcare, PAGE_SIZE) != PAGE_SIZE) {
