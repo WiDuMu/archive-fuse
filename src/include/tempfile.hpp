@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+
 #ifndef TEMPFILE_H
 #define TEMPFILE_H
 #pragma once

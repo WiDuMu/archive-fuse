@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+
 #ifndef FS_FUSE_H
 #define FS_FUSE_H
 #pragma once

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+
 #pragma once
 #ifndef LOGGING_H
 #define LOGGING_H

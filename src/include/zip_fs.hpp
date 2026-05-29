@@ -1,16 +1,18 @@
+// SPDX-License-Identifier: MPL-2.0
+
 #ifndef ZIPFS_H
 #define ZIPFS_H
 
-#include <zipconf.h>
-#include <set>
 #pragma once
 
 #include <zip.h>
 
 #include <cstring>
+#include <set>
 
 #include <fs.hpp>
 
+/// Zip FUSE filesystem
 class ZipFS : public FileSystem {
    private:
 	zip_t* z;
@@ -18,6 +20,7 @@ class ZipFS : public FileSystem {
 	std::set<std::string> dirs;
 
    public:
+    /// Load archive_path to get it ready to mount
 	ZipFS(const std::string& archive_path);
 	~ZipFS();
 

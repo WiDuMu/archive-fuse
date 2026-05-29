@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+
 #include <zip.h>
 
 #include <cerrno>
@@ -98,7 +100,7 @@ int ZipFS::readdir(const std::string& path, void* buf, fuse_fill_dir_t filler, o
 	bool any_added = false;
 	std::set<std::string_view> dirs_added;
 	std::string dir = path.substr(1);
-	if (path != "/" && !path.ends_with('/')) {
+	if (!path.ends_with('/')) {
 		dir += '/';
 	}
 
