@@ -32,17 +32,17 @@ void log_level(enum logging_level level, std::format_string<Args...> fmt, Args&&
 
 template <typename... Args>
 inline void log_err(std::format_string<Args...> fmt, Args&&... args) {
-    log(ERROR, fmt, std::forward<Args>(args)...);
+    log_level(ERROR, fmt, std::forward<Args>(args)...);
 }
 
 template <typename... Args>
 inline void log_info(std::format_string<Args...> fmt, Args&&... args) {
-    log(INFO, fmt, std::forward<Args>(args)...);
+    log_level(INFO, fmt, std::forward<Args>(args)...);
 }
 
 template <typename... Args>
 inline void log_verbose(std::format_string<Args...> fmt, Args&&... args) {
-    log(VERBOSE, fmt, std::forward<Args>(args)...);
+    log_level(VERBOSE, fmt, std::forward<Args>(args)...);
 }
 
 #endif
