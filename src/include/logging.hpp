@@ -13,7 +13,7 @@ enum logging_level {
 	VERBOSE, // All logging
 };
 
-// Logging level of the process
+/// Logging level of the process
 inline enum logging_level logging_level = INFO;
 
 /// Log with a level, specify a level:
