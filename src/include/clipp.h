@@ -1406,9 +1406,9 @@ public:
     //---------------------------------------------------------------
     /** @brief executes all argument actions */
     void execute_actions(const arg_string& arg) const {
-        int i = 0;
+        // int i = 0;
         for(const auto& a : argActions_) {
-            ++i;
+            // ++i;
             a(arg.c_str());
         }
     }
@@ -4440,7 +4440,7 @@ longest_prefix_match(scoped_dfs_traverser pos, const arg_string& arg,
                         return match_t{arg, std::move(pos)};
                     }
                     else if(match.length() > longest.length()) {
-                        longest = match_t{arg.substr(match.at(), match.length()), 
+                        longest = match_t{arg.substr(match.at(), match.length()),
                                           pos};
                     }
                 }
@@ -7021,4 +7021,3 @@ void print(OStream& os, const group& g, int level)
 } //namespace clipp
 
 #endif
-
