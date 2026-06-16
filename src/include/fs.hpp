@@ -64,6 +64,14 @@ class FileSystem {
 	}
 
    public:
+    bool getBackground() {
+        return background;
+    }
+
+    void setBackground(bool back) {
+        background = back;
+    }
+
 	// Main loop to mount the filesystem
 	int run(const char* mount_point) {
 		log_level(VERBOSE, "Mounting fs on mount point {}", mount_point);
@@ -81,13 +89,13 @@ class FileSystem {
 		std::vector<char*> fake_args = {
 		    const_cast<char*>("fakeprogramname"),
 		    const_cast<char*>(mount_point),
-		    const_cast<char*>("-f"),
+		    // const_cast<char*>("-f"),
 		    const_cast<char*>("-s"),
 		};
 
-		// if (!background) {
-		//     fake_args.push_back(const_cast<char*>("-f"));
-		// }
+		if (!background) {
+		    fake_args.push_back(const_cast<char*>("-f"));
+		}
 
 		return fuse_main(fake_args.size(), fake_args.data(), &ops, this);
 	}
