@@ -66,7 +66,7 @@ class FileSystem {
    public:
 	// Main loop to mount the filesystem
 	int run(const char* mount_point) {
-		log(VERBOSE, "Mounting fs on mount point {}", mount_point);
+		log_level(VERBOSE, "Mounting fs on mount point {}", mount_point);
 
 		struct fuse_operations ops = {};
 		ops.getattr = wrap_getattr;

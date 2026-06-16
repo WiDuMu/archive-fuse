@@ -38,7 +38,7 @@ ZipFS::ZipFS(const std::string& archive_path) : FileSystem(), z(nullptr) {
 
 			while (separator_loc != std::string::npos) {
 				potential_dir_name = potential_dir_name.substr(0, separator_loc);
-				log(VERBOSE, "Adding dir {} to dirs", potential_dir_name);
+				log_level(VERBOSE, "Adding dir {} to dirs", potential_dir_name);
 				dirs.insert(potential_dir_name);
 				separator_loc = potential_dir_name.find('/');
 			}
@@ -51,7 +51,7 @@ ZipFS::~ZipFS() { zip_close(z); }
 int ZipFS::getattr(const std::string& path, struct stat* stbuf) {
 	zip_stat_t sb{};
 
-	log(VERBOSE, "Stating entry {}", path);
+	log_level(VERBOSE, "Stating entry {}", path);
 
 	if (path == "/") {
 		stbuf->st_mode = S_IFDIR | 0755;
@@ -106,7 +106,7 @@ int ZipFS::readdir(const std::string& path, void* buf, fuse_fill_dir_t filler, o
 		dir += '/';
 	}
 
-	log(VERBOSE, "Reading dir {}", dir);
+	log_level(VERBOSE, "Reading dir {}", dir);
 
 	for (long i = 0; i < nentries; i++) {
 		// This is probably less efficient than doing it manually, too bad.
@@ -150,7 +150,7 @@ int ZipFS::readdir(const std::string& path, void* buf, fuse_fill_dir_t filler, o
 }
 
 int ZipFS::open(const std::string& path, struct fuse_file_info* fi) {
-	log(VERBOSE, "Opening entry {}", path);
+	log_level(VERBOSE, "Opening entry {}", path);
 	zip_file_t* file = zip_fopen(z, path.c_str() + 1, ZIP_FL_ENC_GUESS);
 	ssize_t seekable = zip_file_is_seekable(file);
 	if (seekable == -1) {
@@ -165,7 +165,7 @@ int ZipFS::open(const std::string& path, struct fuse_file_info* fi) {
 }
 
 int ZipFS::release(const std::string& path, struct fuse_file_info* fi) {
-	log(VERBOSE, "Closing entry {}", path);
+	log_level(VERBOSE, "Closing entry {}", path);
 	if (fi->fh) {
 		zip_fclose(reinterpret_cast<zip_file_t*>(fi->fh & (~1)));
 	}
@@ -188,11 +188,11 @@ static inline int zseek(zip_file_t* file, off_t offset) {
 		return 0;
 	}
 
-	log(VERBOSE, "Read seeking to offset {}", offset)
+	log_level(VERBOSE, "Read seeking to offset {}", offset);
 
 	while (curr != -1 && (curr + PAGE_SIZE) < offset) {
 		if (zip_fread(file, dontcare, PAGE_SIZE) != PAGE_SIZE) {
-			log(ERROR, "Failed read seek from offset {} to offset {}", curr, offset);
+			log_level(ERROR, "Failed read seek from offset {} to offset {}", curr, offset);
 			return EOF;
 		}
 
@@ -200,14 +200,14 @@ static inline int zseek(zip_file_t* file, off_t offset) {
 	}
 
 	if (curr == -1) {
-		log(ERROR, "Failed read seek, ftell failed");
+		log_level(ERROR, "Failed read seek, ftell failed");
 		return EOF;
 	}
 
 	zip_int64_t read_size = offset - curr;
 
 	if (zip_fread(file, dontcare, read_size) != read_size) {
-		log(ERROR, "Failed final read seek from offset {} to {}", curr, offset);
+		log_level(ERROR, "Failed final read seek from offset {} to {}", curr, offset);
 		return EOF;
 	}
 
@@ -218,12 +218,11 @@ int ZipFS::read(const std::string& path, char* buf, size_t size, off_t offset,
                 struct fuse_file_info* fi) {
 	zip_file_t* file = nullptr;
 	bool fopened = false;
-	log(VERBOSE, "Reading {} bytes from offset {} from {}", size, offset, path);
+	log_level(VERBOSE, "Reading {} bytes from offset {} from {}", size, offset, path);
 
 	if (fi->fh) {
 		file = reinterpret_cast<zip_file_t*>(fi->fh & (~1));
-		bool seekable = fi->fh & 1;
-		log(VERBOSE, "Open file! addr: {}, seekable: {}", fi->fh, seekable);
+		// bool seekable = fi->fh & 1;
 	} else {
 		file = zip_fopen(z, path.c_str() + 1, ZIP_FL_ENC_GUESS);
 		fopened = true;
