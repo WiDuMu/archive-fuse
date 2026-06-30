@@ -2,7 +2,6 @@
 
 #ifndef ZIPFS_H
 #define ZIPFS_H
-
 #pragma once
 
 #include <zip.h>
@@ -18,6 +17,7 @@ class ZipFS : public FileSystem {
 	zip_t* z;
 	zip_int64_t nentries;
 	std::set<std::string> dirs;
+	// std::unordered_map<std::string, struct stat> entries;
 
    public:
     /// Load archive_path to get it ready to mount

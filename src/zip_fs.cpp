@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
+#include <fuse.h>
 #include <sys/stat.h>
 #include <zip.h>
 
@@ -35,16 +36,18 @@ ZipFS::ZipFS(const std::string& archive_path) : FileSystem(), z(nullptr) {
 		const char* fname = zip_get_name(z, i, ZIP_FL_ENC_GUESS);
 		if (fname) {
 			std::string potential_dir_name = fname;
-			size_t separator_loc = potential_dir_name.find('/');
+			size_t separator_loc = potential_dir_name.find_last_of('/');
 
 			while (separator_loc != std::string::npos) {
 				potential_dir_name = potential_dir_name.substr(0, separator_loc);
 				log_level(VERBOSE, "Adding dir {} to dirs", potential_dir_name);
 				dirs.insert(potential_dir_name);
-				separator_loc = potential_dir_name.find('/');
+				separator_loc = potential_dir_name.find_last_of('/');
 			}
 		}
 	}
+
+	log_verbose("Directories: {}", dirs);
 }
 
 ZipFS::~ZipFS() { zip_close(z); }
@@ -69,6 +72,7 @@ int ZipFS::getattr(const std::string& path, struct stat* stbuf) {
 			stbuf->st_mtim.tv_sec = sb.mtime;
 		}
 	} else {
+	    log_err("Failed to stat entry {}", path);
 		return -ENOENT;
 	}
 
@@ -131,7 +135,7 @@ int ZipFS::readdir(const std::string& path, void* buf, fuse_fill_dir_t filler, o
 			} else {
 				if (!postfix.empty()) {
 					std::string f(postfix);
-					filler(buf, f.c_str(), NULL, 0, FUSE_FILL_DIR_PLUS);
+					filler(buf, f.c_str(), NULL, 0, FUSE_FILL_DIR_DEFAULTS);
 				}
 				any_added = true;
 			}
@@ -156,13 +160,13 @@ int ZipFS::open(const std::string& path, struct fuse_file_info* fi) {
 	ssize_t seekable = zip_file_is_seekable(file);
 	if (seekable == -1) {
         zip_fclose(file);
-	    return EIO; // Seekable returned error
+	    return -EIO; // Seekable returned error
 	}
 	if (file) {
 		fi->fh = reinterpret_cast<size_t>(file) | seekable;
 		return 0;
 	}
-	return ENOENT;
+	return -ENOENT;
 }
 
 int ZipFS::release(const std::string& path, struct fuse_file_info* fi) {
