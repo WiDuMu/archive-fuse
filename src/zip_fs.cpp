@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
+#include <sys/stat.h>
 #include <zip.h>
 
 #include <cerrno>
@@ -140,7 +141,7 @@ int ZipFS::readdir(const std::string& path, void* buf, fuse_fill_dir_t filler, o
 	if (any_added) {
 		struct stat st{};
 		st.st_nlink = 3;
-		st.st_nlink = S_IFDIR | default_perms;
+		st.st_mode = S_IFDIR | default_perms;
 		filler(buf, ".", &st, 0, FUSE_FILL_DIR_PLUS);
 		filler(buf, "..", &st, 0, FUSE_FILL_DIR_PLUS);
 		return 0;
@@ -205,9 +206,16 @@ static inline int zseek(zip_file_t* file, off_t offset) {
 	}
 
 	zip_int64_t read_size = offset - curr;
+	zip_int64_t ret = zip_fread(file, dontcare, read_size);
 
-	if (zip_fread(file, dontcare, read_size) != read_size) {
-		log_level(ERROR, "Failed final read seek from offset {} to {}", curr, offset);
+	if (ret != read_size) {
+		log_level(ERROR, "Failed final read seek from offset {} to {}, read_size: {}, read_val: {}", curr, offset, read_size, ret);
+		if (ret == -1) {
+            zip_error_t* zerr = zip_file_get_error(file);
+            const char* err_str = zip_error_strerror(zerr);
+            log_err("Error: {}", err_str);
+            zip_error_fini(zerr);
+		}
 		return EOF;
 	}
 

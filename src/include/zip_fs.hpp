@@ -37,4 +37,4 @@ class ZipFS : public FileSystem {
 	         struct fuse_file_info* fi);
 };
 
-#endif
+#endif   // ZIP_FS_H
