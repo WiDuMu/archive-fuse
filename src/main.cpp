@@ -17,7 +17,7 @@ int main(int argc, char** argv) {
 	std::string mount_point;
 	bool help = false, open = false, verbose = false;
 
-	auto cli = (clipp::option("-v", "--help").doc("Display this help").set(help),
+	auto cli = (clipp::option("-h", "--help").doc("Display this help").set(help),
 	            clipp::option("-v", "--verbose").set(verbose).doc("Verbose logging"),
 	            clipp::option("-o", "--open").set(open).doc("Open folder"),
 	            (clipp::option("-c", "--command").set(open) & clipp::value("command").set(command))

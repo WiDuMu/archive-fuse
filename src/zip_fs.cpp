@@ -10,18 +10,24 @@
 
 #include "logging.hpp"
 
-ZipFS::ZipFS(const std::string& archive_path) : FileSystem(), z(nullptr) {
+const char* zip_string_error(int err) {
+	zip_error_t error;
+	zip_error_init_with_code(&error, err);
+	const char* ret = zip_error_strerror(&error);
+	zip_error_fini(&error);
+	return ret;
+}
+
+std::runtime_error zip_runtime_error(int err) { return std::runtime_error(zip_string_error(err)); }
+
+ZipFS::ZipFS(const std::string& archive_path) : ZipFS(archive_path.c_str()) {}
+
+ZipFS::ZipFS(const char* archive_path) : FileSystem(), z(nullptr) {
 	int err;
-	z = zip_open(archive_path.c_str(), ZIP_RDONLY, &err);
+	z = zip_open(archive_path, ZIP_RDONLY, &err);
 
 	if (!z) {
-		zip_error_t error;
-		zip_error_init_with_code(&error, err);
-
-		std::runtime_error except(zip_error_strerror(&error));
-		zip_error_fini(&error);
-
-		throw except;
+		throw zip_runtime_error(err);
 	}
 
 	nentries = zip_get_num_entries(z, 0);
@@ -70,7 +76,6 @@ int ZipFS::getattr(const std::string& path, struct stat* stbuf) {
 			stbuf->st_mtim.tv_sec = sb.mtime;
 		}
 	} else {
-	    log_err("Failed to stat entry {}", path);
 		return -ENOENT;
 	}
 
@@ -104,7 +109,7 @@ int ZipFS::readdir(const std::string& path, void* buf, fuse_fill_dir_t filler, o
 	std::set<std::string_view> dirs_added;
 	std::string dir = path.substr(1);
 	if (path == "/") {
-        any_added = true;
+		any_added = true;
 	} else if (!path.ends_with('/')) {
 		dir += '/';
 	}
@@ -157,8 +162,8 @@ int ZipFS::open(const std::string& path, struct fuse_file_info* fi) {
 	zip_file_t* file = zip_fopen(z, path.c_str() + 1, ZIP_FL_ENC_GUESS);
 	ssize_t seekable = zip_file_is_seekable(file);
 	if (seekable == -1) {
-        zip_fclose(file);
-	    return -EIO; // Seekable returned error
+		zip_fclose(file);
+		return -EIO;  // Seekable returned error
 	}
 	if (file) {
 		fi->fh = reinterpret_cast<size_t>(file) | seekable;
@@ -211,12 +216,13 @@ static inline int zseek(zip_file_t* file, off_t offset) {
 	zip_int64_t ret = zip_fread(file, dontcare, read_size);
 
 	if (ret != read_size) {
-		log_level(ERROR, "Failed final read seek from offset {} to {}, read_size: {}, read_val: {}", curr, offset, read_size, ret);
+		log_level(ERROR, "Failed final read seek from offset {} to {}, read_size: {}, read_val: {}",
+		          curr, offset, read_size, ret);
 		if (ret == -1) {
-            zip_error_t* zerr = zip_file_get_error(file);
-            const char* err_str = zip_error_strerror(zerr);
-            log_err("Error: {}", err_str);
-            zip_error_fini(zerr);
+			zip_error_t* zerr = zip_file_get_error(file);
+			const char* err_str = zip_error_strerror(zerr);
+			log_err("Error: {}", err_str);
+			zip_error_fini(zerr);
 		}
 		return EOF;
 	}
