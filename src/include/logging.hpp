@@ -26,7 +26,7 @@ void log_level(enum logging_level level, std::format_string<Args...> fmt, Args&&
     // Check if the message level meets or exceeds the current system log level
     if (level <= logging_level) {
         // Pass the format string and forwarded arguments to std::println
-        std::println(fmt, std::forward<Args>(args)...);
+        std::println(stderr, fmt, std::forward<Args>(args)...);
     }
 }
 
